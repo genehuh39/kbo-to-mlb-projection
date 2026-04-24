@@ -83,6 +83,250 @@ PITCHER_FACTORS = _loaded["pitcher"] if _loaded else dict(_DEFAULT_PITCHER_FACTO
 
 
 # ============================================================================
+# CONFIDENCE INTERVALS (from validation data)
+#
+# Standard deviations per stat, computed from historical KBO→MLB
+# player transitions. Used to generate uncertainty bands around
+# point projections.
+# ============================================================================
+
+BATTER_STD = {
+    "avg": 0.0185,
+    "obp": 0.0235,
+    "slg": 0.0380,
+    "ops": 0.0499,
+    "hr": 4.85,
+    "sb": 4.98,
+    "k_rate": 0.0154,
+    "bb_rate": 0.0140,
+    "iso": 0.0302,
+    "wrc_plus": 13.70,
+}
+
+PITCHER_STD = {
+    "era": 0.65,
+    "k_per_9": 0.93,
+    "bb_per_9": 1.05,
+    "whip": 0.17,
+    "hr_per_9": 0.42,
+    "fip": 0.53,
+    "k_bb_ratio": 0.65,
+    "era_plus": 19.78,
+}
+
+
+def confidence_interval(point_value, std):
+    """
+    Compute 80% and 95% confidence intervals around a point projection.
+
+    Uses normal approximation: CI = point ± z * std
+      80% → z ≈ 1.28
+      95% → z ≈ 1.96
+    """
+    if std is None or std == 0:
+        return {"low_80": point_value, "high_80": point_value,
+                "low_95": point_value, "high_95": point_value}
+
+    z80 = 1.28
+    z95 = 1.96
+
+    return {
+        "low_80": round(point_value - z80 * std, 4),
+        "high_80": round(point_value + z80 * std, 4),
+        "low_95": round(point_value - z95 * std, 4),
+        "high_95": round(point_value + z95 * std, 4),
+    }
+
+
+def format_ci(value, ci, is_count=False):
+    """
+    Format a confidence interval for display.
+
+    Returns: "point (80%: lo–hi) (95%: lo–hi)"
+    """
+    if is_count:
+        return f"{value:.0f} (80%: {ci['low_80']:.0f}–{ci['high_80']:.0f}) (95%: {ci['low_95']:.0f}–{ci['high_95']:.0f})"
+    return f"{value:.3f} (80%: {ci['low_80']:.3f}–{ci['high_80']:.3f}) (95%: {ci['low_95']:.3f}–{ci['high_95']:.3f})"
+
+
+# ============================================================================
+# MULTI-YEAR PROJECTIONS (with aging curves)
+#
+# KBO players often have different MLB aging trajectories.
+# These factors model year-over-year changes after the transition.
+# ============================================================================
+
+# Year-over-year aging multipliers for MLB (post-transition)
+# These are applied to the year-1 projection.
+# Based on typical MLB aging curves, adjusted for KBO transition patterns.
+
+BATTER_AGING = {
+    # Young players (25 and under) tend to improve in MLB
+    "young": {
+        1: 1.00,   # year 1 = baseline projection
+        2: 1.03,   # +3% improvement (adjustment period)
+        3: 1.05,   # +5% (peak adjustment)
+        4: 1.06,   # plateau
+        5: 1.05,   # slight decline begins
+    },
+    # Average players (26-30) have modest early gains then decline
+    "average": {
+        1: 1.00,
+        2: 1.02,   # +2% (adjustment)
+        3: 1.03,
+        4: 1.02,
+        5: 0.99,   # decline starts
+    },
+    # Older players (31+) tend to struggle more in MLB
+    "old": {
+        1: 1.00,
+        2: 0.97,   # -3% (struggle continues)
+        3: 0.94,   # -6%
+        4: 0.91,   # -9%
+        5: 0.87,   # -13%
+    },
+}
+
+PITCHER_AGING = {
+    "young": {
+        1: 1.00,
+        2: 1.02,   # adjustment period
+        3: 1.04,
+        4: 1.03,
+        5: 1.00,   # peak then decline
+    },
+    "average": {
+        1: 1.00,
+        2: 1.01,
+        3: 1.02,
+        4: 1.00,
+        5: 0.97,
+    },
+    "old": {
+        1: 1.00,
+        2: 0.96,   # decline starts immediately
+        3: 0.92,
+        4: 0.87,
+        5: 0.82,
+    },
+}
+
+
+def _aging_category(age):
+    """Determine aging category based on transition age."""
+    if age <= 25:
+        return "young"
+    elif age <= 30:
+        return "average"
+    else:
+        return "old"
+
+
+def project_batter_multi_year(kbo_stats, age=27, years=3):
+    """
+    Project MLB batting stats for multiple years post-transition.
+
+    Args:
+        kbo_stats (dict): KBO statistics
+        age (int): player's age at time of transition
+        years (int): number of years to project (default: 3)
+
+    Returns:
+        dict: {year_1, year_2, ...}: each containing projected stats
+              with confidence intervals.
+    """
+    categories = {
+        "young": BATTER_AGING["young"],
+        "average": BATTER_AGING["average"],
+        "old": BATTER_AGING["old"],
+    }
+    category = _aging_category(age)
+    aging_curve = categories[category]
+
+    result = {}
+    for year in range(1, years + 1):
+        base_proj = project_batter(kbo_stats, age)
+
+        # Apply aging curve (year 1 = no additional adjustment)
+        multiplier = aging_curve.get(year, 1.0)
+
+        projected = {}
+        for stat, value in base_proj.items():
+            if isinstance(value, float):
+                projected[stat] = round(value * multiplier, 4)
+            else:
+                projected[stat] = value
+
+        # Compute confidence intervals for this year
+        cis = {}
+        for stat, value in projected.items():
+            std = BATTER_STD.get(stat)
+            if std is not None:
+                # Std increases slightly with year (more uncertainty)
+                year_std = std * (1 + 0.05 * (year - 1))
+                cis[stat] = confidence_interval(value, year_std)
+
+        result[f"year_{year}"] = {
+            "stats": projected,
+            "cis": cis,
+            "aging_multiplier": round(multiplier, 3),
+        }
+
+    return result
+
+
+def project_pitcher_multi_year(kbo_stats, age=27, role="starter", years=3):
+    """
+    Project MLB pitching stats for multiple years post-transition.
+
+    Args:
+        kbo_stats (dict): KBO statistics
+        age (int): player's age at time of transition
+        role (str): "starter" or "reliever"
+        years (int): number of years to project (default: 3)
+
+    Returns:
+        dict: {year_1, year_2, ...}: each containing projected stats
+              with confidence intervals.
+    """
+    categories = {
+        "young": PITCHER_AGING["young"],
+        "average": PITCHER_AGING["average"],
+        "old": PITCHER_AGING["old"],
+    }
+    category = _aging_category(age)
+    aging_curve = categories[category]
+
+    result = {}
+    for year in range(1, years + 1):
+        base_proj = project_pitcher(kbo_stats, age=age, role=role)
+
+        multiplier = aging_curve.get(year, 1.0)
+
+        projected = {}
+        for stat, value in base_proj.items():
+            if isinstance(value, float):
+                projected[stat] = round(value * multiplier, 4)
+            else:
+                projected[stat] = value
+
+        cis = {}
+        for stat, value in projected.items():
+            std = PITCHER_STD.get(stat)
+            if std is not None:
+                year_std = std * (1 + 0.05 * (year - 1))
+                cis[stat] = confidence_interval(value, year_std)
+
+        result[f"year_{year}"] = {
+            "stats": projected,
+            "cis": cis,
+            "aging_multiplier": round(multiplier, 3),
+        }
+
+    return result
+
+
+# ============================================================================
 # AGE ADJUSTMENT
 #
 # Players age 24 and under tend to translate better (more upside).
@@ -291,6 +535,81 @@ def print_projection(projection, player_name="Player", stat_type="hitter"):
     print(f"{'='*60}\n")
 
 
+def print_multi_year_projection(projection, player_name="Player", stat_type="hitter"):
+    """
+    Pretty-print multi-year projection results with confidence intervals.
+
+    Args:
+        projection (dict): Multi-year projection from project_batter_multi_year()
+                          or project_pitcher_multi_year().
+        player_name (str): Player name for display.
+        stat_type (str): "hitter" or "pitcher".
+    """
+    print(f"\n{'='*70}")
+    print(f"  KBO → MLB Multi-Year Projection: {player_name}")
+    print(f"  {'BATTING' if stat_type == 'hitter' else 'PITCHING'}")
+    print(f"  (80% CI = ~1 in 5 chance outside range | 95% CI = ~1 in 20)")
+    print(f"{'='*70}")
+
+    stat_labels = {
+        "avg": "Batting Average",
+        "obp": "On-Base Pct",
+        "slg": "Slugging Pct",
+        "ops": "OPS",
+        "hr": "Home Runs",
+        "sb": "Stolen Bases",
+        "k_rate": "Strikeout Rate",
+        "bb_rate": "Walk Rate",
+        "iso": "ISO",
+        "wrc_plus": "wRC+",
+        "era": "ERA",
+        "k_per_9": "K/9",
+        "bb_per_9": "BB/9",
+        "whip": "WHIP",
+        "hr_per_9": "HR/9",
+        "fip": "FIP",
+        "k_bb_ratio": "K/BB Ratio",
+        "era_plus": "ERA+",
+    }
+
+    # Determine which stats are counts (HR, SB)
+    count_stats = {"hr", "sb"}
+
+    for year_key, data in projection.items():
+        stats = data["stats"]
+        cis = data["cis"]
+
+        print(f"\n  {year_key.upper()} (Aging: x{data['aging_multiplier']})")
+        print(f"  {'Stat':<25} {'Projected':>14} {'80% CI':>22} {'95% CI':>22}")
+        print(f"  {'-'*83}")
+
+        for stat, value in stats.items():
+            label = stat_labels.get(stat, stat.upper())
+
+            # Format the point projection
+            if stat in ["era", "fip"]:
+                proj_str = f"{value:.2f}"
+            elif stat in ["avg", "obp", "slg", "ops", "whip"]:
+                proj_str = f"{value:.3f}"
+            elif stat in ["k_rate", "bb_rate", "k_per_9", "bb_per_9", "hr_per_9"]:
+                proj_str = f"{value:.2f}"
+            else:
+                proj_str = f"{value:.0f}" if isinstance(value, (int, float)) else str(value)
+
+            # Format confidence intervals
+            ci = cis.get(stat, {})
+            if stat in count_stats:
+                ci_80 = f"{ci.get('low_80', 0):.0f}–{ci.get('high_80', 0):.0f}"
+                ci_95 = f"{ci.get('low_95', 0):.0f}–{ci.get('high_95', 0):.0f}"
+            else:
+                ci_80 = f"{ci.get('low_80', 0):.3f}–{ci.get('high_80', 0):.3f}"
+                ci_95 = f"{ci.get('low_95', 0):.3f}–{ci.get('high_95', 0):.3f}"
+
+            print(f"  {label:<25} {proj_str:>14} {ci_80:>22} {ci_95:>22}")
+
+    print(f"\n{'='*70}\n")
+
+
 # ============================================================================
 # DEMO / EXAMPLES
 # ============================================================================
@@ -372,6 +691,34 @@ def demo():
     proj = project_pitcher(reliever, age=31, role="reliever")
     print_projection(proj, "Reliever", "pitcher")
 
+    # Example 5: Multi-year projection (young hitter)
+    young_hitter = {
+        "avg": 0.310,
+        "ops": 0.890,
+        "hr": 25,
+        "sb": 30,
+        "k_rate": 0.18,
+        "bb_rate": 0.075,
+    }
+
+    print("Example 5: Multi-Year Projection (Young Hitter, age 24)")
+    print("-" * 50)
+    proj = project_batter_multi_year(young_hitter, age=24, years=3)
+    print_multi_year_projection(proj, "Young Hitter", "hitter")
+
+    # Example 6: Multi-year projection (older pitcher)
+    older_pitcher = {
+        "era": 3.50,
+        "k_per_9": 8.5,
+        "bb_per_9": 3.0,
+        "whip": 1.20,
+    }
+
+    print("Example 6: Multi-Year Projection (Older Pitcher, age 32)")
+    print("-" * 50)
+    proj = project_pitcher_multi_year(older_pitcher, age=32, role="starter", years=3)
+    print_multi_year_projection(proj, "Older Pitcher", "pitcher")
+
 
 # ============================================================================
 # CLI INTERFACE
@@ -405,6 +752,17 @@ def cli():
         choices=["starter", "reliever"],
         default="starter",
         help="Pitcher role (default: starter)",
+    )
+    parser.add_argument(
+        "--multi",
+        action="store_true",
+        help="Show multi-year projections with confidence intervals (default: single year)",
+    )
+    parser.add_argument(
+        "--years",
+        type=int,
+        default=3,
+        help="Number of years to project (default: 3, max: 5)",
     )
 
     # Hitter stats
@@ -463,14 +821,25 @@ def cli():
         sys.exit(1)
 
     # Run projection
-    if args.type == "hitter":
-        projection = project_batter(kbo_stats, age=args.age)
-        print_projection(projection, args.name, "hitter")
+    if args.multi:
+        years = min(args.years, 5)
+        if args.type == "hitter":
+            projection = project_batter_multi_year(kbo_stats, age=args.age, years=years)
+            print_multi_year_projection(projection, args.name, "hitter")
+        else:
+            projection = project_pitcher_multi_year(
+                kbo_stats, age=args.age, role=args.role, years=years
+            )
+            print_multi_year_projection(projection, args.name, "pitcher")
     else:
-        projection = project_pitcher(
-            kbo_stats, age=args.age, role=args.role
-        )
-        print_projection(projection, args.name, "pitcher")
+        if args.type == "hitter":
+            projection = project_batter(kbo_stats, age=args.age)
+            print_projection(projection, args.name, "hitter")
+        else:
+            projection = project_pitcher(
+                kbo_stats, age=args.age, role=args.role
+            )
+            print_projection(projection, args.name, "pitcher")
 
 
 if __name__ == "__main__":
