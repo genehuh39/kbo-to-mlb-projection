@@ -1,0 +1,27 @@
+{
+  "description": "KBO-to-MLB conversion factors recalibrated from historical validation data (11 hitters, 5 pitchers).",
+  "version": "2.0",
+  "last_updated": "2026-04-24",
+  "batter_factors": {
+    "avg": 0.86,
+    "obp": 0.87,
+    "slg": 0.87,
+    "ops": 0.87,
+    "hr": 0.79,
+    "sb": 0.66,
+    "k_rate": 1.10,
+    "bb_rate": 0.90,
+    "iso": 0.88,
+    "wrc_plus": 0.77
+  },
+  "pitcher_factors": {
+    "era": 1.37,
+    "k_per_9": 0.93,
+    "bb_per_9": 1.25,
+    "whip": 1.19,
+    "hr_per_9": 1.44,
+    "fip": 1.25,
+    "k_bb_ratio": 0.71,
+    "era_plus": 0.65
+  }
+}
