@@ -10,21 +10,116 @@ KBO production does not directly translate to MLB — park dimensions, ball comp
 
 ## Quick Start
 
+### Single Player Projection
+
 ```bash
-# Run the demo (4 example projections)
+# Run the demo (6 example projections)
 uv run python kbo_to_mlb.py
 
-# Project a hitter
+# Project a hitter (single year)
 uv run python kbo_to_mlb.py --type hitter --name "Player Name" --avg 0.300 --ops 0.900 --hr 30 --age 27
 
-# Project a pitcher
+# Project a pitcher (single year)
 uv run python kbo_to_mlb.py --type pitcher --name "Pitcher Name" --era 3.50 --k_per_9 9.0 --whip 1.15 --age 28
-
-# Batch process from JSON
-uv run python kbo_to_mlb.py --json kbo_stats.json
 ```
 
-## Usage
+### Multi-Year Projection (with Confidence Intervals)
+
+```bash
+# 3-year projection with 80% and 95% confidence intervals
+uv run python kbo_to_mlb.py --type hitter --name "Kim Ha-seong" \
+  --avg 0.310 --ops 0.850 --hr 18 --sb 40 --age 28 --multi
+```
+
+### Batch Processing (Multiple Players)
+
+```bash
+# Process all players from sample data
+uv run python batch.py --input sample_kbo_players.json
+
+# Find top 5 projected home run hitters
+uv run python batch.py --input sample_kbo_players.json \
+  --filter-type hitter --sort hr --limit 5
+
+# Find pitchers who project to <4.00 ERA
+uv run python batch.py --input sample_kbo_players.json \
+  --filter-type pitcher --filter-era 4.0
+
+# Output as CSV for spreadsheet analysis
+uv run python batch.py --input sample_kbo_players.json -o mlb_projections.csv
+```
+
+## Batch Processing (`batch.py`)
+
+Process entire KBO rosters at once. Automatically classifies players as hitters or pitchers based on available stats.
+
+### Input Formats
+
+**JSON:**
+```json
+[
+  {
+    "name": "Kim Ha-seong",
+    "age": 28,
+    "position": "SS",
+    "avg": 0.310,
+    "ops": 0.850,
+    "hr": 18,
+    "sb": 40,
+    "k_rate": 0.18,
+    "bb_rate": 0.075
+  }
+]
+```
+
+**CSV:**
+```csv
+name,age,position,avg,ops,hr,sb,k_rate,bb_rate
+Kim Ha-seong,28,SS,0.310,0.850,18,40,0.18,0.075
+```
+
+### Filtering (combine as needed)
+
+| Filter | Description | Example |
+|--------|-------------|---------|
+| `--filter-hr` | Minimum projected home runs | `--filter-hr 25` |
+| `--filter-ops` | Minimum projected OPS | `--filter-ops 0.85` |
+| `--filter-era` | Maximum projected ERA (pitchers) | `--filter-era 4.0` |
+| `--filter-wrc_plus` | Minimum projected wRC+ | `--filter-wrc_plus 120` |
+| `--filter-sb` | Minimum projected stolen bases | `--filter-sb 30` |
+| `--filter-k_per_9` | Minimum projected K/9 (pitchers) | `--filter-k_per_9 8.0` |
+| `--filter-whip` | Maximum projected WHIP (pitchers) | `--filter-whip 1.20` |
+| `--filter-type` | Only hitters or pitchers | `--filter-type pitcher` |
+| `--filter-position` | Position substring match | `--filter-position SS` |
+
+### Sorting & Limiting
+
+| Flag | Description | Example |
+|------|-------------|---------|
+| `--sort` | Sort by stat (hr, ops, era, k_per_9, wrc_plus, sb, whip) | `--sort hr` |
+| `--reverse` | Ascending order (default: descending) | `--sort hr --reverse` |
+| `--limit N` | Return only top N results | `--limit 10` |
+
+### Output Formats
+
+| Format | Extension | Description |
+|--------|-----------|-------------|
+| Text (default) | `.txt` or stdout | Formatted report with hitter/pitcher sections |
+| JSON | `.json` | Structured data with metadata and projections |
+| CSV | `.csv` | Spreadsheet-friendly format |
+
+### Usage Examples
+
+```bash
+# Find fast shortstops (25+ SB)
+uv run python batch.py --input kbo_players.json \
+  --filter-type hitter --filter-position SS --filter-sb 25 --sort sb
+
+# Verbose mode (shows processing progress)
+uv run python batch.py --input kbo_players.json --verbose
+```
+
+## Usage (Single Player)
 
 ### CLI Arguments
 
@@ -39,9 +134,9 @@ uv run python kbo_to_mlb.py --json kbo_stats.json
 
 **Pitcher stats:** `--era`, `--k_per_9`, `--bb_per_9`, `--whip`, `--hr_per_9`, `--fip`, `--k_bb_ratio`, `--era_plus`
 
-### JSON Input
+### JSON Input (Single Player)
 
-For batch processing, provide a JSON file:
+For single-player batch processing, provide a JSON file:
 
 ```json
 {
@@ -128,18 +223,29 @@ MLB: 4.10 ERA, 10.6 K/9, 1.265 WHIP (projected)
 ## Architecture
 
 ```
-kbo_to_mlb.py
-├── factors.json        # Recalibrated conversion factors (loaded at runtime)
-├── BATTER_FACTORS      # Conversion multipliers for hitters (from factors.json)
-├── PITCHER_FACTORS     # Conversion multipliers for pitchers (from factors.json)
-├── age_adjustment_factor()  # Age-based adjustment
-├── role_adjustment()        # Role/skill-based adjustment
-├── project_batter()         # Main hitter projection
-├── project_pitcher()        # Main pitcher projection
-├── print_projection()       # Pretty-print output
-├── demo()                   # Built-in examples
-└── cli()                    # Command-line interface
+kbo_to_mlb.py                  # Core projection engine
+├── factors.json               # Recalibrated conversion factors (loaded at runtime)
+├── BATTER_FACTORS             # Conversion multipliers for hitters
+├── PITCHER_FACTORS            # Conversion multipliers for pitchers
+├── age_adjustment_factor()    # Age-based adjustment
+├── role_adjustment()          # Role/skill-based adjustment
+├── project_batter()           # Main hitter projection
+├── project_pitcher()          # Main pitcher projection
+├── print_projection()         # Pretty-print output
+└── demo()                     # Built-in examples
+
+batch.py                       # Batch processing pipeline
+├── load_json() / load_csv()   # Input parsing (JSON or CSV)
+├── classify_player()          # Auto-detect hitter vs pitcher
+├── project_player()           # Single-player projection wrapper
+├── filter_players()           # Apply stat threshold filters
+├── sort_players()             # Sort by any projection stat
+└── output_json/csv/text()     # Multiple output formats
 ```
+
+## Sample Data
+
+`sample_kbo_players.json` and `sample_kbo_players.csv` contain 20 realistic KBO players (10 hitters, 10 pitchers) for testing the batch pipeline.
 
 ## Requirements
 
