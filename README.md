@@ -10,7 +10,24 @@ KBO production does not directly translate to MLB — park dimensions, ball comp
 
 ## Quick Start
 
-### Single Player Projection
+### Live KBO Stats Lookup (NEW!)
+
+```bash
+# Search MyKBOStats.com and project directly — no manual stat entry needed!
+uv run python kbo_to_mlb.py --lookup "Kang Baekho"
+
+# With multi-year projection
+uv run python kbo_to_mlb.py --lookup "Kang Baekho" --multi
+
+# Fetch by URL or player ID
+uv run python kbo_to_mlb.py --lookup-url "https://mykbostats.com/players/1694"
+uv run python kbo_to_mlb.py --lookup-id 1694
+
+# Specify age override
+uv run python kbo_to_mlb.py --lookup "Na Gyun-an" --age 26
+```
+
+### Single Player Projection (Manual Stats)
 
 ```bash
 # Run the demo (6 example projections)
@@ -223,7 +240,7 @@ MLB: 4.10 ERA, 10.6 K/9, 1.265 WHIP (projected)
 ## Architecture
 
 ```
-kbo_to_mlb.py                  # Core projection engine
+kbo_to_mlb.py                  # Core projection engine + CLI
 ├── factors.json               # Recalibrated conversion factors (loaded at runtime)
 ├── BATTER_FACTORS             # Conversion multipliers for hitters
 ├── PITCHER_FACTORS            # Conversion multipliers for pitchers
@@ -241,7 +258,59 @@ batch.py                       # Batch processing pipeline
 ├── filter_players()           # Apply stat threshold filters
 ├── sort_players()             # Sort by any projection stat
 └── output_json/csv/text()     # Multiple output formats
+
+kbo_fetcher.py                 # Live KBO stats fetcher (MyKBOStats.com)
+├── fetch_player()             # Fetch stats for a single player
+├── search_player()            # Search by name across all KBO teams
+├── fetch_team()               # Fetch entire team roster
+├── fetch_league_leaders()     # Get top players by stat
+├── to_projection_input()      # Convert fetched stats → projection input
+└── CLI: --search, --url, --id, --team, --leaders, --project
 ```
+
+## Live KBO Stats Fetcher (`kbo_fetcher.py`)
+
+Fetches current-season KBO player statistics from [MyKBOStats.com](https://mykbostats.com) using `cloudscraper` (to bypass Cloudflare) and `beautifulsoup4` for HTML parsing.
+
+### Standalone Usage
+
+```bash
+# Search for a player
+uv run python kbo_fetcher.py --search "Kang Baekho"
+
+# Fetch by player ID
+uv run python kbo_fetcher.py --id 1694
+
+# Fetch by full URL
+uv run python kbo_fetcher.py --url "https://mykbostats.com/players/1694-Kang-Baekho-Hanwha-Eagles"
+
+# Fetch and also run MLB projection
+uv run python kbo_fetcher.py --id 1694 --project
+
+# Fetch an entire team
+uv run python kbo_fetcher.py --team "LG Twins"
+
+# Show league leaders (slow — fetches all players)
+uv run python kbo_fetcher.py --leaders --stat hr --type hitter --limit 10
+
+# Output as JSON
+uv run python kbo_fetcher.py --id 1694 -o player_stats.json
+```
+
+### How It Works
+
+1. **Player search**: Scrapes all 10 KBO team roster pages to build a player index (cached for 24 hours).
+2. **Stat fetching**: Parses MyKBOStats player pages for season stats tables.
+3. **Stat mapping**: Translates MyKBOStats columns to the projection tool's stat keys:
+   - Hitters: BA→avg, OBP→obp, SLG→slg, OPS→ops, HR→hr, SB→sb, K%/BB%→k_rate/bb_rate, ISO calculated
+   - Pitchers: ERA→era, WHIP→whip, K/9 BB/9 HR/9 calculated from raw IP and totals
+4. **Projection**: `--project` flag auto-runs the MLB projection on fetched stats.
+
+### Notes
+
+- MyKBOStats is an unofficial fan site. Stats are scraped respectfully with caching and rate limiting.
+- Advanced stats (wRC+, FIP, ERA+) are not available on MyKBOStats; use Statiz or manual entry for those.
+- The first `--search` or `--lookup` call builds a player index (~30 seconds). Subsequent calls use the cache.
 
 ## Sample Data
 
@@ -253,8 +322,14 @@ batch.py                       # Batch processing pipeline
 - `uv` (for dependency management)
 
 ```bash
+# Install dependencies
+uv pip install -e .
+
+# Or run directly with uv
 uv run python kbo_to_mlb.py
 ```
+
+**Dependencies:** pandas, numpy, cloudscraper, beautifulsoup4 (see `pyproject.toml`)
 
 ## Updating Factors
 
