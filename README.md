@@ -1,5 +1,7 @@
 # KBO → MLB Projection Tool
 
+[![version](https://img.shields.io/badge/version-0.2.0-blue)](https://github.com/genehuh39/kbo-to-mlb-projection/releases)
+
 Project Major League Baseball performance based on Korean Baseball Organization (KBO) statistics.
 
 ## Overview
@@ -10,7 +12,7 @@ KBO production does not directly translate to MLB — park dimensions, ball comp
 
 ## Quick Start
 
-### Live KBO Stats Lookup (NEW!)
+### Live KBO Stats Lookup
 
 ```bash
 # Search MyKBOStats.com and project directly — no manual stat entry needed!
@@ -218,6 +220,18 @@ uv run python kbo_to_mlb.py --json kbo_stats.json
 | **Reliever** | −5% penalty |
 
 ## Examples
+
+### Live Lookup (Real 2026 Data)
+```
+$ uv run python kbo_to_mlb.py --lookup "Kang Baekho"
+  📡 Fetched from: https://mykbostats.com/players/1694
+  📊 KBO Stats (2026): .297 AVG, 4 HR, .814 OPS
+
+  KBO → MLB Projection: Kang Baek-ho
+  Batting Average............... 0.255
+  OPS........................... 0.708
+  Home Runs..................... 3
+```
 
 ### Power Hitter (KBO Star)
 ```
