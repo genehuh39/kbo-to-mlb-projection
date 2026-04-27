@@ -790,10 +790,78 @@ def cli():
     # JSON file input
     parser.add_argument("--json", help="Path to JSON file with KBO stats")
 
+    # Live KBO stats lookup
+    parser.add_argument(
+        "--lookup",
+        help="Search MyKBOStats.com for a player and auto-fetch stats (e.g., 'Kim Ha-seong').",
+    )
+    parser.add_argument(
+        "--lookup-url",
+        help="Fetch stats from a specific MyKBOStats player URL.",
+    )
+    parser.add_argument(
+        "--lookup-id",
+        help="Fetch stats by MyKBOStats numeric player ID.",
+    )
+    parser.add_argument(
+        "--lookup-season",
+        type=int,
+        help="Season to fetch for --lookup (default: most recent).",
+    )
+
     args = parser.parse_args()
 
-    # Load from JSON file if provided
-    if args.json:
+    # --- Live KBO stats lookup ---
+    if args.lookup or args.lookup_url or args.lookup_id:
+        from kbo_fetcher import fetch_player, search_player, to_projection_input
+
+        try:
+            if args.lookup:
+                # Search by name
+                matches = search_player(args.lookup)
+                if not matches:
+                    print(f"No players found matching '{args.lookup}'.")
+                    sys.exit(1)
+                if len(matches) > 1:
+                    print(f"Found {len(matches)} matches. Using first: {matches[0]['name']}")
+                player_data = fetch_player(
+                    url=matches[0]["url"],
+                    season=args.lookup_season,
+                )
+            else:
+                # Fetch by URL or ID
+                player_data = fetch_player(
+                    url=args.lookup_url,
+                    player_id=args.lookup_id,
+                    season=args.lookup_season,
+                )
+        except ImportError:
+            print("Error: kbo_fetcher requires cloudscraper and beautifulsoup4.")
+            print("  Install with: pip install cloudscraper beautifulsoup4")
+            sys.exit(1)
+        except Exception as e:
+            print(f"Error fetching player stats: {e}")
+            sys.exit(1)
+
+        proj_input = to_projection_input(player_data, age=args.age)
+        kbo_stats = proj_input["kbo_stats"]
+        args.type = proj_input["player_type"]
+        args.name = proj_input["name"]
+        if proj_input["player_type"] == "pitcher":
+            args.role = proj_input["role"]
+
+        if not kbo_stats:
+            print(f"No stats available for {player_data['name']}.")
+            sys.exit(1)
+
+        # Print source info
+        print(f"\n  📡 Fetched from: {player_data['url']}")
+        print(f"  📊 KBO Stats ({player_data['current_stats'].get('year', 'N/A')}):")
+        for stat, val in kbo_stats.items():
+            if val is not None:
+                print(f"     {stat}: {val}")
+
+    elif args.json:
         with open(args.json, "r") as f:
             kbo_stats = json.load(f)
     else:
@@ -844,7 +912,7 @@ def cli():
 
 if __name__ == "__main__":
     # Run demo if no CLI args
-    import sys
+    # (but --lookup is handled inside cli())
     if len(sys.argv) == 1:
         demo()
     else:
