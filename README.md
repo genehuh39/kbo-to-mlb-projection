@@ -18,8 +18,11 @@ KBO production does not directly translate to MLB — park dimensions, ball comp
 # Search MyKBOStats.com and project directly — no manual stat entry needed!
 uv run python kbo_to_mlb.py --lookup "Kang Baekho"
 
-# With multi-year projection
-uv run python kbo_to_mlb.py --lookup "Kang Baekho" --multi
+# With multi-year projection and MLB comps
+uv run python kbo_to_mlb.py --lookup "Kang Baekho" --multi --comps
+
+# With MLB player comps
+uv run python kbo_to_mlb.py --avg 0.310 --ops 0.950 --hr 35 --comps
 
 # Fetch by URL or player ID
 uv run python kbo_to_mlb.py --lookup-url "https://mykbostats.com/players/1694"
@@ -153,6 +156,8 @@ uv run python batch.py --input kbo_players.json --verbose
 
 **Pitcher stats:** `--era`, `--k_per_9`, `--bb_per_9`, `--whip`, `--hr_per_9`, `--fip`, `--k_bb_ratio`, `--era_plus`
 
+**Other flags:** `--multi` (multi-year), `--comps` (MLB player comps), `--lookup` (live KBO stats)
+
 ### JSON Input (Single Player)
 
 For single-player batch processing, provide a JSON file:
@@ -280,6 +285,12 @@ kbo_fetcher.py                 # Live KBO stats fetcher (MyKBOStats.com)
 ├── fetch_league_leaders()     # Get top players by stat
 ├── to_projection_input()      # Convert fetched stats → projection input
 └── CLI: --search, --url, --id, --team, --leaders, --project
+
+mlb_comps.py                   # MLB player comparison engine
+├── find_comps()               # Find closest MLB comps for projected stats
+├── format_comps()             # Pretty-print comp results
+├── _REFERENCE_HITTERS         # 53 representative MLB hitter stat lines
+└── _REFERENCE_PITCHERS        # 35 representative MLB pitcher stat lines
 ```
 
 ## Live KBO Stats Fetcher (`kbo_fetcher.py`)
@@ -325,6 +336,40 @@ uv run python kbo_fetcher.py --id 1694 -o player_stats.json
 - MyKBOStats is an unofficial fan site. Stats are scraped respectfully with caching and rate limiting.
 - Advanced stats (wRC+, FIP, ERA+) are not available on MyKBOStats; use Statiz or manual entry for those.
 - The first `--search` or `--lookup` call builds a player index (~30 seconds). Subsequent calls use the cache.
+
+## MLB Player Comps (`mlb_comps.py`)
+
+Finds the closest MLB player comparisons for a projected stat line using normalized Euclidean distance across stat vectors. Includes a reference database of 50+ hitters and 35+ pitchers covering the full spectrum from All-Stars to bench players.
+
+### Usage
+
+```bash
+# Auto-run with any projection
+uv run python kbo_to_mlb.py --lookup "Na Gyun-an" --comps
+uv run python kbo_to_mlb.py --avg 0.310 --ops 0.950 --hr 35 --comps
+
+# Standalone
+uv run python mlb_comps.py --type hitter --avg 0.255 --hr 18 --sb 15
+uv run python mlb_comps.py --type pitcher --era 3.50 --k-per-9 9.0 --whip 1.15
+```
+
+### Example Output
+
+```
+  MLB COMPS (HITTER)
+  ───────────────────────────────────────────────────────
+  🥇 Rafael Devers                 39.5% match
+  🥈 Teoscar Hernandez             37.5% match
+  🥉 Gunnar Henderson              35.9% match
+  ───────────────────────────────────────────────────────
+```
+
+### How It Works
+
+1. Each projected stat line is compared against a database of 2025 MLB regulars.
+2. Stats are z-score normalized per column to handle different scales (AVG ~0.250 vs HR ~20).
+3. Similarity = `1 / (1 + euclidean_distance)` between normalized vectors.
+4. Top 3 closest matches returned with 0–100% similarity scores.
 
 ## Sample Data
 

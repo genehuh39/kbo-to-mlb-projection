@@ -759,6 +759,11 @@ def cli():
         help="Show multi-year projections with confidence intervals (default: single year)",
     )
     parser.add_argument(
+        "--comps",
+        action="store_true",
+        help="Show closest MLB player comparisons for the projected stat line.",
+    )
+    parser.add_argument(
         "--years",
         type=int,
         default=3,
@@ -894,11 +899,14 @@ def cli():
         if args.type == "hitter":
             projection = project_batter_multi_year(kbo_stats, age=args.age, years=years)
             print_multi_year_projection(projection, args.name, "hitter")
+            # Use year-1 stats for comps
+            comps_projection = projection.get("year_1", {}).get("stats", {})
         else:
             projection = project_pitcher_multi_year(
                 kbo_stats, age=args.age, role=args.role, years=years
             )
             print_multi_year_projection(projection, args.name, "pitcher")
+            comps_projection = projection.get("year_1", {}).get("stats", {})
     else:
         if args.type == "hitter":
             projection = project_batter(kbo_stats, age=args.age)
@@ -908,6 +916,16 @@ def cli():
                 kbo_stats, age=args.age, role=args.role
             )
             print_projection(projection, args.name, "pitcher")
+        comps_projection = projection
+
+    # Show MLB player comps if requested
+    if args.comps and comps_projection:
+        try:
+            from mlb_comps import find_comps, format_comps
+            comps = find_comps(comps_projection, player_type=args.type)
+            print(format_comps(comps, args.type))
+        except ImportError:
+            print("(mlb_comps module not available)")
 
 
 if __name__ == "__main__":
