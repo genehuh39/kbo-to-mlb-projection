@@ -1,6 +1,6 @@
 # KBO → MLB Projection Tool
 
-[![version](https://img.shields.io/badge/version-0.2.0-blue)](https://github.com/genehuh39/kbo-to-mlb-projection/releases)
+[![version](https://img.shields.io/badge/version-0.3.0-blue)](https://github.com/genehuh39/kbo-to-mlb-projection/releases)
 
 Project Major League Baseball performance based on Korean Baseball Organization (KBO) statistics.
 
@@ -187,29 +187,29 @@ uv run python kbo_to_mlb.py --json kbo_stats.json
 
 | Stat | KBO → MLB Factor | Rationale |
 |------|-------------------|-----------|
-| Batting Average | 0.88x | KBO AVG is typically inflated |
-| On-Base % | 0.92x | Walks are more valued in MLB |
-| Slugging % | 0.82x | KBO parks are smaller, ball flies more |
-| OPS | 0.85x | Composite of OBP + SLG |
-| Home Runs | 0.72x | KBO parks are smaller, different ball |
-| Stolen Bases | 0.90x | Speed translates well |
-| Strikeout Rate | 1.20x | MLB pitchers are better |
-| Walk Rate | 1.10x | MLB pitchers throw more strikes |
-| ISO | 0.75x | KBO ISO is inflated |
-| wRC+ | 0.85x | Already league-adjusted |
+| Batting Average | 0.86x | KBO AVG is typically inflated |
+| On-Base % | 0.87x | Walks are more valued in MLB |
+| Slugging % | 0.87x | KBO parks are smaller, ball flies more |
+| OPS | 0.87x | Composite of OBP + SLG |
+| Home Runs | 0.79x | KBO parks are smaller, different ball |
+| Stolen Bases | 0.66x | Speed translates well |
+| Strikeout Rate | 1.10x | MLB pitchers are better |
+| Walk Rate | 0.90x | MLB pitchers throw more strikes |
+| ISO | 0.88x | KBO ISO is inflated |
+| wRC+ | 0.77x | Already league-adjusted |
 
 ### Pitchers
 
 | Stat | KBO → MLB Factor | Rationale |
 |------|-------------------|-----------|
-| ERA | 1.28x | KBO ERA understates MLB struggles |
-| K/9 | 1.12x | KBO strikeout rates are lower |
-| BB/9 | 0.90x | MLB hitters take fewer bad pitches |
-| WHIP | 1.15x | Composite metric |
-| HR/9 | 0.80x | KBO home run rate is inflated |
-| FIP | 1.20x | Fielding independent metric |
-| K/BB Ratio | 0.95x | KBO ratios tend to be lower |
-| ERA+ | 0.85x | Already league-adjusted |
+| ERA | 1.37x | KBO ERA understates MLB struggles |
+| K/9 | 0.93x | KBO strikeout rates are lower |
+| BB/9 | 1.25x | MLB hitters take fewer bad pitches |
+| WHIP | 1.19x | Composite metric |
+| HR/9 | 1.44x | KBO home run rate is inflated |
+| FIP | 1.25x | Fielding independent metric |
+| K/BB Ratio | 0.71x | KBO ratios tend to be lower |
+| ERA+ | 0.65x | Already league-adjusted |
 
 ### Adjustments
 
