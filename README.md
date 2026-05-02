@@ -183,6 +183,23 @@ uv run python kbo_to_mlb.py --json kbo_stats.json
 
 ## Conversion Factors
 
+### Calibration Dataset
+
+Historical KBO-to-MLB transitions now live in `data/transitions.csv`. This file
+is the source of truth for future recalibration work and includes source URLs
+for each seed row. Inspect it with:
+
+```bash
+python transitions.py
+```
+
+Backtest the current projection model against the transition dataset with:
+
+```bash
+python validate.py
+python validate.py --json
+```
+
 ### Batters
 
 | Stat | KBO → MLB Factor | Rationale |
